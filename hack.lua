@@ -18,6 +18,15 @@ local flyKey = Enum.KeyCode.F
 local espEnabled = false
 local espStore = {}
 
+-- AIMBOT Sistemi
+local aimbotEnabled = false
+local aimbotKey = Enum.KeyCode.Q
+local aimbotTarget = nil
+local aimbotFov = 50
+local aimbotSmoothness = 0.2
+local aimbotTeamCheck = true
+local aimbotVisibleCheck = true
+
 -- ESP renkleri
 local espColors = {
     Color3.new(1, 0, 0),    -- Kırmızı
@@ -59,8 +68,8 @@ mainButton.Draggable = true
 
 -- Gelişmiş panel (sağdan genişleyen)
 local panel = Instance.new("Frame")
-panel.Size = UDim2.new(0, 0, 0, 500) -- Başlangıçta genişlik 0
-panel.Position = UDim2.new(1, -20, 0.5, -250) -- Sağ tarafta
+panel.Size = UDim2.new(0, 0, 0, 550) -- Başlangıçta genişlik 0
+panel.Position = UDim2.new(1, -20, 0.5, -275) -- Sağ tarafta
 panel.AnchorPoint = Vector2.new(1, 0.5)
 panel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 panel.BorderSizePixel = 0
@@ -81,7 +90,7 @@ scrollFrame.BackgroundTransparency = 1
 scrollFrame.BorderSizePixel = 0
 scrollFrame.ScrollBarThickness = 8
 scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
-scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 800)
+scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 900)
 scrollFrame.Parent = panel
 
 -- Başlık bar - Gelişmiş
@@ -213,6 +222,14 @@ local antiGravityBtn, contentY = makeButton("🪂 Anti-Gravity: Kapalı", conten
 local noClipBtn, contentY = makeButton("🚷 NoClip: Kapalı", contentY, Color3.fromRGB(180, 70, 70))
 
 contentY = contentY + 10
+contentY = makeSection("AIMBOT SİSTEMİ", contentY)
+
+local aimbotBtn, contentY = makeButton("🎯 Aimbot: Kapalı (Q Tuşu)", contentY, Color3.fromRGB(255, 50, 50))
+local aimbotKeyBtn, contentY = makeButton("⌨️ Aimbot Tuşu: Q (Değiştir)", contentY, Color3.fromRGB(255, 100, 100))
+local teamCheckBtn, contentY = makeButton("👥 Takım Kontrolü: Açık", contentY, Color3.fromRGB(100, 150, 255))
+local visibleCheckBtn, contentY = makeButton("👁️ Görünürlük Kontrolü: Açık", contentY, Color3.fromRGB(100, 200, 255))
+
+contentY = contentY + 10
 contentY = makeSection("AYARLAR", contentY)
 
 local flyLabel, flySliderBG, flySliderFill, flyMin, flyMax, contentY = makeSlider("Fly Hızı", contentY, flySpeed, 1, 200, Color3.fromRGB(100, 100, 255))
@@ -225,6 +242,10 @@ contentY = makeSection("GELİŞMİŞ AYARLAR", contentY)
 local flyKeyBtn, contentY = makeButton("⌨️ Fly Tuşu: F (Değiştir)", contentY, Color3.fromRGB(180, 180, 70))
 local espBtn, contentY = makeButton("🎯 Oyuncu ESP: Kapalı", contentY, Color3.fromRGB(255, 50, 50))
 
+-- Aimbot slider'ları
+local aimbotFovLabel, aimbotFovSliderBG, aimbotFovSliderFill, aimbotFovMin, aimbotFovMax, contentY = makeSlider("Aimbot FOV", contentY, aimbotFov, 1, 200, Color3.fromRGB(255, 100, 100))
+local aimbotSmoothLabel, aimbotSmoothSliderBG, aimbotSmoothSliderFill, aimbotSmoothMin, aimbotSmoothMax, contentY = makeSlider("Aimbot Yumuşaklık", contentY, aimbotSmoothness, 0.1, 1, Color3.fromRGB(255, 150, 100))
+
 -- Canvas size'ı güncelle
 scrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentY + 20)
 
@@ -232,8 +253,8 @@ scrollFrame.CanvasSize = UDim2.new(0, 0, 0, contentY + 20)
 local panelOpen = false
 local openTweenInfo = TweenInfo.new(0.6, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 local closeTweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-local openGoal = {Size = UDim2.new(0, 450, 0, 500)}
-local closeGoal = {Size = UDim2.new(0, 0, 0, 500)}
+local openGoal = {Size = UDim2.new(0, 450, 0, 550)}
+local closeGoal = {Size = UDim2.new(0, 0, 0, 550)}
 
 local function togglePanel()
     if not panelOpen then
@@ -247,6 +268,89 @@ end
 
 mainButton.MouseButton1Click:Connect(togglePanel)
 closeBtn.MouseButton1Click:Connect(togglePanel)
+
+-- AIMBOT SİSTEMİ FONKSİYONLARI --
+local function getClosestPlayer()
+    local closestPlayer = nil
+    local shortestDistance = aimbotFov
+    local localPlayer = Players.LocalPlayer
+    local localCharacter = localPlayer.Character
+    local localHead = localCharacter and localCharacter:FindFirstChild("Head")
+    
+    if not localHead then return nil end
+    
+    local camera = workspace.CurrentCamera
+    
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= localPlayer then
+            -- Takım kontrolü
+            if aimbotTeamCheck and player.Team == localPlayer.Team then
+                continue
+            end
+            
+            local character = player.Character
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            local head = character and character:FindFirstChild("Head")
+            
+            if character and humanoid and humanoid.Health > 0 and head then
+                -- Görünürlük kontrolü
+                if aimbotVisibleCheck then
+                    local ray = Ray.new(localHead.Position, (head.Position - localHead.Position).Unit * 1000)
+                    local hit, position = workspace:FindPartOnRayWithIgnoreList(ray, {localCharacter, character})
+                    if hit and not hit:IsDescendantOf(character) then
+                        continue
+                    end
+                end
+                
+                -- Ekran pozisyonu ve FOV kontrolü
+                local headScreenPos, onScreen = camera:WorldToViewportPoint(head.Position)
+                if onScreen then
+                    local mousePos = UserInputService:GetMouseLocation()
+                    local distance = (Vector2.new(headScreenPos.X, headScreenPos.Y) - mousePos).Magnitude
+                    
+                    if distance < shortestDistance then
+                        shortestDistance = distance
+                        closestPlayer = player
+                    end
+                end
+            end
+        end
+    end
+    
+    return closestPlayer
+end
+
+local function aimAt(target)
+    if not target or not target.Character then return end
+    
+    local head = target.Character:FindFirstChild("Head")
+    if not head then return end
+    
+    local camera = workspace.CurrentCamera
+    local currentCFrame = camera.CFrame
+    
+    -- Yumuşak hedefleme
+    local targetPosition = head.Position + Vector3.new(0, -1, 0) -- Göğüs bölgesi
+    local direction = (targetPosition - camera.CFrame.Position).Unit
+    local targetCFrame = CFrame.new(camera.CFrame.Position, camera.CFrame.Position + direction)
+    
+    camera.CFrame = currentCFrame:Lerp(targetCFrame, aimbotSmoothness)
+end
+
+-- Aimbot ana döngüsü
+RunService.RenderStepped:Connect(function()
+    if aimbotEnabled and UserInputService:IsKeyDown(aimbotKey) then
+        if not aimbotTarget then
+            aimbotTarget = getClosestPlayer()
+        end
+        
+        if aimbotTarget then
+            aimAt(aimbotTarget)
+        end
+    else
+        aimbotTarget = nil
+    end
+end)
 
 -- ESP SİSTEMİ FONKSİYONLARI --
 local function createESPBox(player)
@@ -474,6 +578,22 @@ end)
 antiGravityBtn.MouseButton1Click:Connect(toggleAntiGravity)
 espBtn.MouseButton1Click:Connect(toggleAllESP)
 
+-- Aimbot buton event'leri
+aimbotBtn.MouseButton1Click:Connect(function()
+    aimbotEnabled = not aimbotEnabled
+    aimbotBtn.Text = aimbotEnabled and "🎯 Aimbot: Açık (Q Tuşu)" or "🎯 Aimbot: Kapalı (Q Tuşu)"
+end)
+
+teamCheckBtn.MouseButton1Click:Connect(function()
+    aimbotTeamCheck = not aimbotTeamCheck
+    teamCheckBtn.Text = aimbotTeamCheck and "👥 Takım Kontrolü: Açık" or "👥 Takım Kontrolü: Kapalı"
+end)
+
+visibleCheckBtn.MouseButton1Click:Connect(function()
+    aimbotVisibleCheck = not aimbotVisibleCheck
+    visibleCheckBtn.Text = aimbotVisibleCheck and "👁️ Görünürlük Kontrolü: Açık" or "👁️ Görünürlük Kontrolü: Kapalı"
+end)
+
 -- Fly tuş değiştirme
 local waitingForKey = false
 flyKeyBtn.MouseButton1Click:Connect(function()
@@ -489,6 +609,27 @@ flyKeyBtn.MouseButton1Click:Connect(function()
                 flyKeyBtn.Text = "⌨️ Fly Tuşu: " .. keyName
                 flyBtn.Text = "🛸 Fly: Kapalı (" .. keyName .. " Tuşu)"
                 waitingForKey = false
+                connection:Disconnect()
+            end
+        end)
+    end
+end)
+
+-- Aimbot tuş değiştirme
+local waitingForAimbotKey = false
+aimbotKeyBtn.MouseButton1Click:Connect(function()
+    if not waitingForAimbotKey then
+        waitingForAimbotKey = true
+        aimbotKeyBtn.Text = "⌨️ Yeni tuşa basın..."
+        
+        local connection
+        connection = UserInputService.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                aimbotKey = input.KeyCode
+                local keyName = tostring(aimbotKey):gsub("Enum.KeyCode.", "")
+                aimbotKeyBtn.Text = "⌨️ Aimbot Tuşu: " .. keyName
+                aimbotBtn.Text = "🎯 Aimbot: Kapalı (" .. keyName .. " Tuşu)"
+                waitingForAimbotKey = false
                 connection:Disconnect()
             end
         end)
@@ -527,6 +668,44 @@ local function setupSlider(sliderBG, sliderFill, label, minVal, maxVal, onChange
     end)
 end
 
+-- Özel aimbot slider sistemi
+local function setupAimbotSlider(sliderBG, sliderFill, label, minVal, maxVal, onChange, isFloat)
+    local dragging = false
+    
+    local function updateValue(x)
+        local frac = math.clamp(x / sliderBG.AbsoluteSize.X, 0, 1)
+        local value
+        if isFloat then
+            value = minVal + frac * (maxVal - minVal)
+            value = math.floor(value * 10) / 10
+        else
+            value = math.floor(minVal + frac * (maxVal - minVal))
+        end
+        sliderFill.Size = UDim2.new(frac, 0, 1, 0)
+        label.Text = string.gsub(label.Text, " : [%d%.]+", " : " .. value)
+        onChange(value)
+    end
+    
+    sliderBG.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            updateValue(input.Position.X - sliderBG.AbsolutePosition.X)
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            updateValue(input.Position.X - sliderBG.AbsolutePosition.X)
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+end
+
 -- Slider kurulumu
 setupSlider(flySliderBG, flySliderFill, flyLabel, flyMin, flyMax, function(val) flySpeed = val end)
 setupSlider(walkSliderBG, walkSliderFill, walkLabel, walkMin, walkMax, function(val) 
@@ -541,6 +720,10 @@ setupSlider(jumpSliderBG, jumpSliderFill, jumpLabel, jumpMin, jumpMax, function(
         player.Character.Humanoid.JumpPower = jumpPower
     end
 end)
+
+-- Aimbot slider kurulumu
+setupSlider(aimbotFovSliderBG, aimbotFovSliderFill, aimbotFovLabel, aimbotFovMin, aimbotFovMax, function(val) aimbotFov = val end)
+setupAimbotSlider(aimbotSmoothSliderBG, aimbotSmoothSliderFill, aimbotSmoothLabel, aimbotSmoothMin, aimbotSmoothMax, function(val) aimbotSmoothness = val end, true)
 
 -- Noclip sistemi
 RunService.Stepped:Connect(function()
@@ -585,3 +768,7 @@ if player.Character then
 end
 
 print("🎉 Frox Hack Ultimate yüklendi! Ana butona tıkla.")
+print("🎯 Aimbot özellikleri:")
+print("   - Q tuşu ile aimbot kullanın")
+print("   - FOV ve yumuşaklık ayarlanabilir")
+print("   - Takım ve görünürlük kontrolü mevcut")
